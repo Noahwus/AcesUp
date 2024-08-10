@@ -10,19 +10,19 @@ public class UpdateSprite : MonoBehaviour
 
     private SpriteRenderer render;
     private Selectable selectable;
-    private AcesUp acesup;
+    private Solitare solitare;
 
      void Start()
-     {   
-        acesup = FindAnyObjectByType<AcesUp>();
-        List<string> deck = AcesUp.GenerateDeck();
+     {
+        solitare = FindAnyObjectByType<Solitare>();
+        List<string> deck = Solitare.GenerateCardNames();
 
         int i = 0;
         foreach (string card in deck)
         {
             if (this.name == card)
             {
-                cardFace = acesup.CardFaces[i];
+                cardFace = solitare.CardFaces[i];
             }
             i++;
         }
