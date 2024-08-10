@@ -7,8 +7,10 @@ using DG.Tweening;
 using static UnityEngine.GraphicsBuffer;
 using UnityEditor;
 using Unity.VisualScripting;
+using static UnityEngine.RuleTile.TilingRuleOutput;
 //using System.Diagnostics;
 
+[RequireComponent(typeof(Collider))]
 public class Draggable : MonoBehaviour
 {
 
@@ -19,7 +21,6 @@ public class Draggable : MonoBehaviour
 
 
     public CardGame game;
-    public AcesUp aces;
     private Collider col;
 
     public bool isDragging = false;
@@ -35,7 +36,18 @@ public class Draggable : MonoBehaviour
     public float rotationLerpFactor = 0.1f;
     //public float maxRotationAngle = 30f;
 
-    private void Start(){col = this.GetComponent<Collider>();}
+    private List<UnityEngine.Transform> stackedCardTrans = new List<UnityEngine.Transform>();
+    private List<Vector3> stackedCardPoss = new List<Vector3>();
+    private List<string> stackNames = new List<string>();
+
+    private Selectable sel;
+
+    private void Start()
+    {
+        col = GetComponent<Collider>();
+        sel = GetComponent<Selectable>();
+    }
+
     private void Update()
     {
         if (isDragging && col.enabled == false) {   col.enabled = false; }
@@ -47,6 +59,24 @@ public class Draggable : MonoBehaviour
         if (IsMouseOverObject() != null)
         {
             isDragging = true;
+
+            stackedCardTrans.Clear();
+            stackedCardTrans = Solitare.Instance.GetStackedCardTransforms(name);
+
+            stackedCardPoss.Clear();
+            foreach (UnityEngine.Transform t in stackedCardTrans)
+            {
+                stackedCardPoss.Add(t.position - transform.position);
+            }
+
+            stackNames.Clear();
+            stackNames.Add(name);
+            foreach (UnityEngine.Transform t in stackedCardTrans)
+            {
+                stackNames.Add(t.name);
+            }
+
+            transform.position = new Vector3(transform.position.x, transform.position.y, Solitare.Instance.cardPadding * -53.0f);
             offset = transform.position - GetMouseWorldPosition();
             originalPosition = transform.position;
 
@@ -66,105 +96,107 @@ public class Draggable : MonoBehaviour
             }*/
 
             transform.position = targetLoc;
+
+            UpdateStackedTransforms();
         }
     }
 
     private void OnMouseUp()
     {
         isDragging = false;
+
         CheckDropViability();
+
+        UpdateStackedTransforms();
     }
 
-    
+    public void UpdateStackedTransforms()
+    {
+        for (int i = 0; i < stackedCardTrans.Count; i++)
+        {
+            stackedCardTrans[i].position = transform.position + stackedCardPoss[i];
+        }
+    }
 
     private void CheckDropViability()
     {
-        string drop = IsDropLocationViable(transform.position);
-        string top = CheckViableDropLocation(transform.position);
-       
-        if (drop == null)
+        col.enabled = false;
+
+        string dropTag = GetDropTag(transform.position);
+
+        string stackName = GetStackName(transform.position);
+
+        col.enabled = true;
+
+        print("Drop string:" + dropTag + " StackName:" + stackName);
+
+
+        if (dropTag == null)
         {
-            Debug.Log(drop);
+            StartCoroutine(LerpToPosition(originalPosition));
         }
-        else
+        else if(!sel.FaceUp && dropTag == "Discard")
+        {
+            sel.FaceUp = true;
+            Debug.Log("Gets here");
+            Solitare.Instance.CardToStack(this.name, stackName);
+            return;
+        }
+        else if(dropTag == "Play")
         {
 
-            Debug.Log(drop + " " + drop);
+            Debug.Log(dropTag + " " + dropTag);
 
-            bool yup = aces.AcesCompareToLast(this.name, drop);
-            if (yup)
+            bool canPlay = Solitare.Instance.CompareToPlay(this.name, stackName);
+            if (canPlay)
             {
                 Debug.Log("Gets here");
-                aces.CardToStack(this.name, drop);
+                Solitare.Instance.CardToStack(stackNames, stackName);
                 return;
-            }else if (aces.LastCardInStack(aces.ParseStackOrder(drop)) == null)
-            {
-                aces.CardToStack(this.name, drop);
             }
-            else { StartCoroutine(LerpToPosition(originalPosition)); }
         }
+        else if( dropTag == "Score")
+        {
+            Debug.Log(dropTag + " " + dropTag);
+
+            bool canScore = Solitare.Instance.CompareToScore(this.name, stackName);
+            if (canScore)
+            {
+                Debug.Log("Gets here");
+                Solitare.Instance.CardToStack(stackNames, stackName);
+                return;
+            }
+        }
+
+        StartCoroutine(LerpToPosition(originalPosition));
 
     }
 
-    private string CheckViableDropLocation(Vector3 droploc)
+    private string GetStackName(Vector3 droploc)
     {
         RaycastHit2D hit = Physics2D.Raycast(GetMouseWorldPosition(), Vector2.zero);
-        
-        if(hit){ 
-            if (hit.collider.CompareTag("Tops"))
+        if (hit)
+        {
+            if (hit.collider.CompareTag("Play") || hit.collider.CompareTag("Score") || hit.collider.CompareTag("Discard"))
             {
+                print("HIT " + hit.collider.tag);
                 return hit.collider.gameObject.name;
             }
-            else if(hit.collider.CompareTag("Card"))
-            {
-                return null;
-            }
         }
-        else
-        {
-            GameObject temp = IsMouseOverObject();
-            if(temp != null)
-            {
-                if (temp.CompareTag("Card"))
-                {
-                    Debug.Log("This was found: " + temp.gameObject.name);
-                    return temp.gameObject.name;
-                }
-            }
-        }
-        
         return null;
     }
 
-    private string IsDropLocationViable(Vector3 dropPosition)
+    private string GetDropTag(Vector3 dropPosition)
     {
-        // Viablility check for Drop location.
-        // If the Drop is attempted overtop a "Tops" position,
-        // or a Card that is currenlty under a Tops poisiton,
         
         RaycastHit2D hit = Physics2D.Raycast(GetMouseWorldPosition(), Vector2.zero);
         if (hit)
         {
-            
-            if (hit.collider.CompareTag("Tops"))
+            if (hit.collider.CompareTag("Play") || hit.collider.CompareTag("Score") || hit.collider.CompareTag("Discard"))
             {
-                return hit.rigidbody.name;
+                print("HIT " + hit.collider.tag);
+                return hit.collider.tag;
             }
-            else if (hit.collider.CompareTag("Card"))
-            {
-
-            }
-        }
-        else
-        {
-            string tempstring = IsMouseOverObject().name;
-            if(this.name != tempstring && tempstring != null)
-            {
-                string strinn = aces.CardIsInStack(tempstring);
-                return strinn;
-            }
-            
-            return null;
         }
         return null;
     }
@@ -196,6 +228,8 @@ public class Draggable : MonoBehaviour
         }
         transform.position = tar; // Ensure we reach the exact original position
         transform.rotation = targetRotation;
+
+        UpdateStackedTransforms();
     }
     public IEnumerator LerpToPosition(Vector3 tar, float LerpSpeedAlt)
     {
@@ -214,6 +248,8 @@ public class Draggable : MonoBehaviour
         }
         transform.position = tar; // Ensure we reach the exact original position
         transform.rotation = targetRotation;
+
+        UpdateStackedTransforms();
     }
 
     private GameObject IsMouseOverObject()

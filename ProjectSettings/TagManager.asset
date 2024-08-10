@@ -9,6 +9,9 @@ TagManager:
   - Card
   - DeckButton
   - CardSlot
+  - Score
+  - Play
+  - Discard
   layers:
   - Default
   - TransparentFX
@@ -16,7 +19,7 @@ TagManager:
   - 
   - Water
   - UI
-  - 
+  - Card
   - 
   - 
   - 

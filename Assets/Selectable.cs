@@ -5,6 +5,6 @@ using UnityEngine;
 public class Selectable : MonoBehaviour
 {
     public bool FaceUp = false;
-    public AcesUp aces;
+
 
 }
