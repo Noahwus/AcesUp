@@ -7,6 +7,7 @@ using DG.Tweening;
 using static UnityEngine.GraphicsBuffer;
 using UnityEditor;
 using Unity.VisualScripting;
+using static UnityEngine.RuleTile.TilingRuleOutput;
 //using System.Diagnostics;
 
 [RequireComponent(typeof(Collider))]
@@ -35,6 +36,10 @@ public class Draggable : MonoBehaviour
     public float rotationLerpFactor = 0.1f;
     //public float maxRotationAngle = 30f;
 
+    private List<UnityEngine.Transform> stackedCardTrans = new List<UnityEngine.Transform>();
+    private List<Vector3> stackedCardPoss = new List<Vector3>();
+    private List<string> stackNames = new List<string>();
+
     private Selectable sel;
 
     private void Start()
@@ -54,6 +59,24 @@ public class Draggable : MonoBehaviour
         if (IsMouseOverObject() != null)
         {
             isDragging = true;
+
+            stackedCardTrans.Clear();
+            stackedCardTrans = Solitare.Instance.GetStackedCardTransforms(name);
+
+            stackedCardPoss.Clear();
+            foreach (UnityEngine.Transform t in stackedCardTrans)
+            {
+                stackedCardPoss.Add(t.position - transform.position);
+            }
+
+            stackNames.Clear();
+            stackNames.Add(name);
+            foreach (UnityEngine.Transform t in stackedCardTrans)
+            {
+                stackNames.Add(t.name);
+            }
+
+            transform.position = new Vector3(transform.position.x, transform.position.y, Solitare.Instance.cardPadding * -53.0f);
             offset = transform.position - GetMouseWorldPosition();
             originalPosition = transform.position;
 
@@ -73,6 +96,8 @@ public class Draggable : MonoBehaviour
             }*/
 
             transform.position = targetLoc;
+
+            UpdateStackedTransforms();
         }
     }
 
@@ -81,9 +106,17 @@ public class Draggable : MonoBehaviour
         isDragging = false;
 
         CheckDropViability();
+
+        UpdateStackedTransforms();
     }
 
-    
+    public void UpdateStackedTransforms()
+    {
+        for (int i = 0; i < stackedCardTrans.Count; i++)
+        {
+            stackedCardTrans[i].position = transform.position + stackedCardPoss[i];
+        }
+    }
 
     private void CheckDropViability()
     {
@@ -91,13 +124,13 @@ public class Draggable : MonoBehaviour
 
         string dropTag = GetDropTag(transform.position);
 
-        print("Drop string " +  dropTag);
-
         string stackName = GetStackName(transform.position);
 
         col.enabled = true;
-        
-       
+
+        print("Drop string:" + dropTag + " StackName:" + stackName);
+
+
         if (dropTag == null)
         {
             StartCoroutine(LerpToPosition(originalPosition));
@@ -118,7 +151,7 @@ public class Draggable : MonoBehaviour
             if (canPlay)
             {
                 Debug.Log("Gets here");
-                Solitare.Instance.CardToStack(this.name, stackName);
+                Solitare.Instance.CardToStack(stackNames, stackName);
                 return;
             }
         }
@@ -130,7 +163,7 @@ public class Draggable : MonoBehaviour
             if (canScore)
             {
                 Debug.Log("Gets here");
-                Solitare.Instance.CardToStack(this.name, stackName);
+                Solitare.Instance.CardToStack(stackNames, stackName);
                 return;
             }
         }
@@ -144,7 +177,7 @@ public class Draggable : MonoBehaviour
         RaycastHit2D hit = Physics2D.Raycast(GetMouseWorldPosition(), Vector2.zero);
         if (hit)
         {
-            if (hit.collider.CompareTag("Play") || hit.collider.CompareTag("Score"))
+            if (hit.collider.CompareTag("Play") || hit.collider.CompareTag("Score") || hit.collider.CompareTag("Discard"))
             {
                 print("HIT " + hit.collider.tag);
                 return hit.collider.gameObject.name;
@@ -195,6 +228,8 @@ public class Draggable : MonoBehaviour
         }
         transform.position = tar; // Ensure we reach the exact original position
         transform.rotation = targetRotation;
+
+        UpdateStackedTransforms();
     }
     public IEnumerator LerpToPosition(Vector3 tar, float LerpSpeedAlt)
     {
@@ -213,6 +248,8 @@ public class Draggable : MonoBehaviour
         }
         transform.position = tar; // Ensure we reach the exact original position
         transform.rotation = targetRotation;
+
+        UpdateStackedTransforms();
     }
 
     private GameObject IsMouseOverObject()

@@ -14,8 +14,10 @@ public class Solitare : Singleton<Solitare>
     public List<GameObject> playPos, scorePos;
     [HideInInspector]
     public List<GameObject> slotPos; //Prev: bottomPos
-    public GameObject DeckPos;
-    public GameObject DiscardPos;
+    public GameObject deckPos;
+    public GameObject discardPos;
+
+    public float cardPadding = .006f;
 
     public static string[] suits = new string[] { "Clubs", "Diamonds", "Hearts", "Spades" };
     public static string[] values = new string[] { "A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K"};
@@ -40,6 +42,7 @@ public class Solitare : Singleton<Solitare>
     private List<string> scoreSlot3 = new List<string>();
 
     private List<string> discard = new List<string>();
+    private List<string> deck = new List<string>();
 
     public enum SolitareCompare
     {
@@ -57,7 +60,7 @@ public class Solitare : Singleton<Solitare>
     void Start()
     {
         cardSlots = new List<string>[]{ playSlot0, playSlot1, playSlot2, playSlot3, playSlot4, playSlot5, playSlot6,
-            scoreSlot0, scoreSlot1, scoreSlot2, scoreSlot3, discard};
+            scoreSlot0, scoreSlot1, scoreSlot2, scoreSlot3, discard, deck};
 
         foreach(GameObject playSlot in playPos)
         {
@@ -68,6 +71,10 @@ public class Solitare : Singleton<Solitare>
         {
             slotPos.Add(scoreSlot);
         }
+
+        slotPos.Add(discardPos);
+
+        slotPos.Add(deckPos);
        
         StartCoroutine(Setup());
     }
@@ -130,7 +137,7 @@ public class Solitare : Singleton<Solitare>
         int i = 0;
         foreach (string cardName in cardNames)
         { 
-            GameObject NewCard = Instantiate(cardPrefab, new Vector3(DeckPos.transform.position.x, DeckPos.transform.position.y - yOff, DeckPos.transform.position.z - 0.01f - zOff), Quaternion.identity, DeckPos.transform);
+            GameObject NewCard = Instantiate(cardPrefab, new Vector3(deckPos.transform.position.x, deckPos.transform.position.y - yOff, deckPos.transform.position.z - 0.01f - zOff), Quaternion.identity, deckPos.transform);
             NewCard.name = cardName;
             var sel = NewCard.GetComponent<Selectable>();
             sel.FaceUp = false;
@@ -144,35 +151,53 @@ public class Solitare : Singleton<Solitare>
     }
    
     public IEnumerator Deal()
-    {   for (int i = 0; i < playPos.Count()-1; i++)
+    {
+        int cardsToDeal = 1;
+        
+        for (int i = 0; i < playPos.Count()-1; i++)
         {
-           string s = cardNames.Last<string>();
-            if (cards.ContainsKey(s))
+            for(int j = 0;  j < cardsToDeal; j++)
             {
-                GameObject cardObject = cards[s];
-                float yOff = 0;
-                float zOff = 0;
-                foreach (string card in cardSlots[i])
+                string s = cardNames.Last<string>();
+                if (cards.ContainsKey(s))
                 {
-                    yOff += .6f;
-                    //zOff += .1f;
+                    GameObject cardObject = cards[s];
+                    float yOff = 0;
+                    float zOff = 0;
+                    foreach (string card in cardSlots[i])
+                    {
+                        yOff += .6f;
+                        zOff += cardPadding;
+                    }
+
+                    Vector3 tar = new Vector3(playPos[i].transform.position.x, playPos[i].transform.position.y - yOff, playPos[i].transform.position.z - cardPadding - zOff);
+
+                    cardObject.transform.SetParent(playPos[i].transform);
+                    Draggable drag = cardObject.GetComponent<Draggable>();
+                    drag.enumToPosition(tar);
+
+                    if(j == cardsToDeal - 1)
+                    {
+                        cardObject.GetComponent<Selectable>().FaceUp = true;
+                    }
+                    
                 }
+                cardSlots[i].Add(s);
+                cardNames.RemoveAt(cardNames.Count - 1);
 
-                Vector3 tar = new Vector3(playPos[i].transform.position.x, playPos[i].transform.position.y - yOff, playPos[i].transform.position.z - 0.1f - zOff) ;
-
-                cardObject.transform.SetParent(playPos[i].transform);
-                Draggable drag = cardObject.GetComponent<Draggable>();
-                drag.enumToPosition(tar);
-                
-                cardObject.GetComponent<Selectable>().FaceUp = true;
+                yield return new WaitForSeconds(.1f);
             }
-           cardSlots[i].Add(s);
-           cardNames.RemoveAt(cardNames.Count - 1);
-           
-            yield return new WaitForSeconds(.1f);
+            cardsToDeal++;
         }
+
+
+        foreach(string cardName in cardNames)
+        {
+            deck.Add(cardName);
+        }
+
         cardPrefab.gameObject.SetActive(false);
-        CardsUpdate();
+        CardsUpdate(true);
     }
 
     
@@ -223,19 +248,31 @@ public class Solitare : Singleton<Solitare>
     //    }
     //}
 
+    public void ResetDeck()
+    {
+        foreach(string cardName in discard)
+        {
+            deck.Add(cardName);
+
+            cards[cardName].GetComponent<Selectable>().FaceUp = false;
+        }
+
+        discard.Clear();
+
+        CardsUpdate();
+    }
+
     public void CardToStack(string card, string stack)
     {
         int stackk = -1;
         stackk = ParseStackOrder(stack);
+
+        print("FOUND STACKK " + stackk);
+
         for (int i = 0; i < (slotPos.Count()); i++)
         {
             if (cardSlots[i].Contains(card))
             {
-                //Debug.Log($"Card {card} found in slot{i}." + $" placing in slot{stack} ");
-
-                if (cardSlots[stackk].Count() > 0) { CardsCompare(card, cardSlots[stackk].Last()); }
-                else { }
-
 
                 cardSlots[i].Remove(card);
                 cardSlots[stackk].Add(card);
@@ -247,7 +284,36 @@ public class Solitare : Singleton<Solitare>
         }
     }
 
-    public void CardsUpdate()
+    public void CardToStack(List<string> cardList, string stack)
+    {
+        int stackk = -1;
+        stackk = ParseStackOrder(stack);
+
+        print("FOUND STACKK " + stackk);
+
+        foreach(string card in cardList)
+        {
+            for (int i = 0; i < (slotPos.Count()); i++)
+            {
+                if (cardSlots[i].Contains(card))
+                {
+
+                    cardSlots[i].Remove(card);
+                    cardSlots[stackk].Add(card);
+                    cards[card].gameObject.transform.SetParent(slotPos[stackk].transform);
+
+                    
+                    break; // Exit the loop if the card is found
+                }
+            }
+        }
+
+        CardsUpdate();
+
+
+    }
+
+    public void CardsUpdate(bool dealing = false)
     {
         //foreach (string card in cardNames)
         //{
@@ -255,11 +321,14 @@ public class Solitare : Singleton<Solitare>
         //}
         for (int i = 0; i< slotPos.Count(); i++)
         {
-            float zOff = 0.1f;
+            float zOff = cardPadding;
             float yOff = 0f;
+
+            float zOffDeck = cardPadding;
             foreach (string card in cardSlots[i])
             {
-                if (cards.ContainsKey(card))
+                if (cards.ContainsKey(card) && cardSlots[i] != deck && cardSlots[i] != discard &&
+                    cardSlots[i] != scoreSlot0 && cardSlots[i] != scoreSlot1 && cardSlots[i] != scoreSlot2 && cardSlots[i] != scoreSlot3)
                 {
                     GameObject cardObject = cards[card];
                     // Modify the position of the cardObject here
@@ -268,22 +337,66 @@ public class Solitare : Singleton<Solitare>
                     {
                         cardObject.GetComponent<Draggable>().enumToPosition(tar, 0.04f);  
                     }
-                    else { cardObject.transform.position = tar; }
-                    
-                    cardObject.GetComponent<Selectable>().FaceUp = true;
+                    else 
+                    { 
+                        cardObject.transform.position = tar; 
+                    }
 
+                    if (!dealing && card == LastCardInStack(i))
+                    {
+                        cardObject.GetComponent<Selectable>().FaceUp = true;
+                    }
 
                     yOff += .6f;
-                    zOff += .1f;
+                    zOff += cardPadding;
+                }
+                else if (cards.ContainsKey(card))
+                {
+                    GameObject cardObject = cards[card];
+                    // Modify the position of the cardObject here
+                    Vector3 tar = new Vector3(slotPos[i].transform.position.x, slotPos[i].transform.position.y, slotPos[i].transform.position.z - zOffDeck);
+                    if (cardObject.GetComponent<Draggable>() != null)
+                    {
+                        cardObject.GetComponent<Draggable>().enumToPosition(tar, 0.04f);
+                    }
+                    else
+                    {
+                        cardObject.transform.position = tar;
+                    }
+
+                    zOffDeck += cardPadding;
                 }
                 else
                 {
                     Debug.LogError("Card '" + card + "' not found in the dictionary.");
                 }
             }
+
+            //if(dealing && cardSlots[i] != deck && LastCardInStack(i) != null)
+            //{
+            //    cards[LastCardInStack(i)].GetComponent<Selectable>().FaceUp = true;
+            //}
         }
     }
 
+    public List<Transform> GetStackedCardTransforms(string cardName)
+    {
+        List<Transform> stackedCardTransforms = new List<Transform>();
+
+        for(int i = 0; i < playPos.Count; i++)
+        {
+            if (cardSlots[i].Contains(cardName))
+            {
+                int initialCardIndex = cardSlots[i].IndexOf(cardName);
+                for (int j = initialCardIndex + 1; j < cardSlots[i].Count; j++)
+                {
+                    stackedCardTransforms.Add(cards[cardSlots[i][j]].transform);
+                }
+            }
+        }
+
+        return stackedCardTransforms;
+    }
 
     public bool CompareToPlay(string heldCard, string stack)
     {
@@ -352,6 +465,10 @@ public class Solitare : Singleton<Solitare>
             print("Ace on Score");
             return SolitareCompare.ScoreViable;
         }
+        else if(stackCard == null)
+        {
+            return SolitareCompare.Null;
+        }
 
         // Extract value and suit from card2
         string[] stackCardParts = stackCard.Split('_');
@@ -393,7 +510,7 @@ public class Solitare : Singleton<Solitare>
     public int ParseStackOrder(string stack)
     {
         string[] stackOrder = { "PlaySlot0", "PlaySlot1", "PlaySlot2", "PlaySlot3", "PlaySlot4", "PlaySlot5", "PlaySlot6",
-            "ScoreSlot0", "ScoreSlot1", "ScoreSlot2", "ScoreSlot3", "Discard"};
+            "ScoreSlot0", "ScoreSlot1", "ScoreSlot2", "ScoreSlot3", "Discard", "DeckButton"};
         for (int i = 0; i < stackOrder.Length; i++)
         {
             if (stack == stackOrder[i])
